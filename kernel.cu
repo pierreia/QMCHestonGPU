@@ -1,5 +1,5 @@
 #include "kernel.h"
-
+#include "product.h"
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
 
@@ -38,7 +38,7 @@ __global__ void setup_kernel(unsigned int * sobolDirectionVectors,
 
 }
 
-__global__ void heston_kernel_curand(curandStateMRG32k3a *state, float kappa, float theta, float sigma, float v0, float T, float r, float s0, float K, float rho, int N_timesteps, int N_paths, float *d_S)
+__global__ void heston_kernel_curand(curandStateMRG32k3a *state, float kappa, float theta, float sigma, float v0, float T, float r, float s0, float K, float rho, int N_timesteps, int N_paths, float *d_S, DiscretisationType mode)
 {
     int id = threadIdx.x + blockIdx.x * blockDim.x;
     
@@ -68,18 +68,22 @@ __global__ void heston_kernel_curand(curandStateMRG32k3a *state, float kappa, fl
                 float dw1 = z1;
                 float dw2 = rho * z1 + sqrt(1 - rho * rho) * z2;
 
-                //float v_plus = v + kappa * (theta - max(v, 0.0)) * dt + sigma * sqrt(max(v, 0.0)) * dw2; //Euler
-                //float s_plus = s * exp((r - 0.5 * max(v, 0.0)) * dt + sqrt(max(v, 0.0)) * dw1);
+                if (mode==EULER) {
 
+                    v_plus = v + kappa * (theta - max(v, 0.0)) * dt + sigma * sqrt(max(v, 0.0)) * sqrt(dt) * dw2; // Milstein
+                    s_plus = s * exp((r - 0.5 * max(v, 0.0)) * dt + sqrt(max(v, 0.0)) * sqrt(dt)* dw1);
 
-                v_plus = v + kappa * (theta - max(v, 0.0)) * dt + sigma * sqrt(max(v, 0.0)) * sqrt(dt) * dw2 + 0.25*sigma*sigma*dt*(dw2*dw2 - 1); // Milstein
-                s_plus = s * exp((r - 0.5 * max(v, 0.0)) * dt + sqrt(max(v, 0.0)) * sqrt(dt)* dw1);
+                    s = s_plus;
+                    v = v_plus;
 
-                //float s_plus = s*(1 + r*dt + sqrt(max(v, 0.0)) * sqrt(dt)* dw1 + s*0.25*dt*(dw1*dw1 - 1));
+                } else {
+                    v_plus = v + kappa * (theta - max(v, 0.0)) * dt + sigma * sqrt(max(v, 0.0)) * sqrt(dt) * dw2 + 0.25*sigma*sigma*dt*(dw2*dw2 - 1); // Milstein
+                    s_plus = s * exp((r - 0.5 * max(v, 0.0)) * dt + sqrt(max(v, 0.0)) * sqrt(dt)* dw1);
 
-                v = max(v_plus, 0.0);
-                s = max(s_plus, 0.0);
-
+                    v = max(v_plus, 0.0);
+                    s = max(s_plus, 0.0);
+                
+                }
                 
             
             }

@@ -65,7 +65,7 @@ int main() {
 
         OptionPriceResult option_result = {
             EURO,
-            MILSTEIN,
+            EULER,
             PSEUDO,
             kappa,
             theta,
@@ -111,7 +111,7 @@ int main() {
         const unsigned BLOCK_SIZE = 512;
         const unsigned GRID_SIZE = ceil(float(N_PATHS) / float(BLOCK_SIZE));
         setup_kernel<<<GRID_SIZE, BLOCK_SIZE>>>(devMRGStates);
-        heston_kernel_curand<<<GRID_SIZE, BLOCK_SIZE>>>(devMRGStates, kappa, theta, sigma, v0, T, r, s0, K, rho, N_STEPS, N_PATHS, d_S);
+        heston_kernel_curand<<<GRID_SIZE, BLOCK_SIZE>>>(devMRGStates, kappa, theta, sigma, v0, T, r, s0, K, rho, N_STEPS, N_PATHS, d_S, MILSTEIN);
         checkCudaErrors(cudaMemcpy(h_S, d_S, sizeof(float) * N_PATHS, cudaMemcpyDeviceToHost));
         
 

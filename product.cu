@@ -16,7 +16,7 @@
 #include <curand_kernel.h>
 
 
-void MCEuro(float kappa, float theta, float sigma, float v0, float T, float r, float s0, float K, float rho, int  N_STEPS, int N_PATHS, float * price){
+void MCEuro(float kappa, float theta, float sigma, float v0, float T, float r, float s0, float K, float rho, int  N_STEPS, int N_PATHS, float * price, DiscretisationType mode){
 
     float *d_S;
     float *h_S;
@@ -42,7 +42,7 @@ void MCEuro(float kappa, float theta, float sigma, float v0, float T, float r, f
     const unsigned BLOCK_SIZE = 512;
     const unsigned GRID_SIZE = ceil(float(N_PATHS) / float(BLOCK_SIZE));
     setup_kernel<<<GRID_SIZE, BLOCK_SIZE>>>(devMRGStates);
-    heston_kernel_curand<<<GRID_SIZE, BLOCK_SIZE>>>(devMRGStates, kappa, theta, sigma, v0, T, r, s0, K, rho, N_STEPS, N_PATHS, d_S);
+    heston_kernel_curand<<<GRID_SIZE, BLOCK_SIZE>>>(devMRGStates, kappa, theta, sigma, v0, T, r, s0, K, rho, N_STEPS, N_PATHS, d_S, mode);
     checkCudaErrors(cudaMemcpy(h_S, d_S, sizeof(float) * N_PATHS, cudaMemcpyDeviceToHost));
     
 
@@ -75,12 +75,12 @@ void calculateOptionPrice(OptionPriceResult& result) {
 
     if (result.type == EURO) {
         MCEuro(result.kappa, result.theta, result.sigma, result.v0, result.T, result.r,
-           result.s0, result.K, result.rho, N_STEPS, N_PATHS, &gpu_price);
+           result.s0, result.K, result.rho, N_STEPS, N_PATHS, &gpu_price, result.discretisation);
     }
     else {
     // Call the MCEuro function
-    MCEuro(result.kappa, result.theta, result.sigma, result.v0, result.T, result.r,
-           result.s0, result.K, result.rho, N_STEPS, N_PATHS, &gpu_price);
+        MCEuro(result.kappa, result.theta, result.sigma, result.v0, result.T, result.r,
+            result.s0, result.K, result.rho, N_STEPS, N_PATHS, &gpu_price, result.discretisation);
     }
 
     double t2 = double(clock()) / CLOCKS_PER_SEC;
