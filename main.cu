@@ -14,6 +14,8 @@
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
 
+#include "product.h"
+
 using namespace std;
 
 #define CUDA_CALL(x) do { if((x) != cudaSuccess) { \
@@ -37,18 +39,9 @@ double normal_random()
 int main() {
     try {
         // declare variables and constants
-        const size_t N_PATHS = 10000;
-        const size_t N_STEPS = 1000;
-        const size_t N_NORMALS = N_PATHS*N_STEPS * 2;
-        // const float T = 1.0f;
-        // const float K = 100.0f;
-        // const float B = 95.0f;
-        // const float S0 = 100.0f;
-        // const float sigma = 0.2f;
-        // const float mu = 0.1f;
-        // const float r = 0.05f;
-        //float dt = float(T)/float(N_STEPS);
-        //float sqrdt = sqrt(dt);
+        int N_PATHS = 10000;
+        int N_STEPS = 1000;
+        
 
         const float kappa = 6.21;
         const float theta = 0.019;
@@ -61,61 +54,44 @@ int main() {
         const float rho = -0.7;
         float dt = T/float(N_STEPS);
 
-        // generate arrays
-        //vector<float> s(N_PATHS);
-        //dev_array<float> d_s(N_PATHS);
-        //dev_array<float> d_normals(N_NORMALS);
-
-        float *d_Z, *d_S;
-
-        float *h_S;
-        float *h_Z;
 
 
-        //checkCudaErrors(cudaMalloc((void **)&d_Z, sizeof(float) * N_NORMALS));
-        checkCudaErrors(cudaMalloc((void **)&d_S, sizeof(float) * N_PATHS));
 
-        //h_Z = (float*)malloc(sizeof(float) * N_NORMALS);
-        h_S = (float*)malloc(sizeof(float) * N_PATHS);
 
+        float gpu_price;
+        
         double t1=double(clock())/CLOCKS_PER_SEC;
- /*        // generate random numbers
-        curandGenerator_t curandGenerator;
-        curandCreateGenerator(&curandGenerator, CURAND_RNG_PSEUDO_PHILOX4_32_10);
-        curandSetPseudoRandomGeneratorSeed(curandGenerator, clock());
-        curandGenerateNormal(curandGenerator, d_Z, N_NORMALS, 0.0f, 1.0f);
+        //MCEuro(kappa, theta, sigma, v0, T, r, s0, K, rho, N_STEPS, N_PATHS, &gpu_price);
 
+        OptionPriceResult option_result = {
+            EURO,
+            MILSTEIN,
+            PSEUDO,
+            kappa,
+            theta,
+            sigma,
+            v0,
+            T,
+            r,
+            s0,
+            K,
+            rho,
+            N_STEPS,
+            N_PATHS,
+            0., // price will be set by calculateOptionPrice
+            0.0 // execution_time will be set by calculateOptionPrice
+        };
+
+        calculateOptionPrice(option_result);
+        
         double t2=double(clock())/CLOCKS_PER_SEC;
 
+        float *d_S;
+        float *h_S;
+        checkCudaErrors(cudaMalloc((void **)&d_S, sizeof(float) * N_PATHS));
 
-
-        // call the kernel
-        //mc_dao_call(d_s.getData(), T, K, B, S0, sigma, mu, r, dt, d_normals.getData(), N_STEPS, N_PATHS);
-        cudaDeviceSynchronize();
-
-        //call the kernel
-        heston_euro_call(kappa, theta, sigma, v0, T, r, s0, K, rho, N_STEPS, N_PATHS, d_S, d_Z);
-
-        // copy results from device to host
-        //d_s.get(&s[0], N_PATHS);
-
-        checkCudaErrors(cudaMemcpy(h_S, d_S, sizeof(float) * N_PATHS, cudaMemcpyDeviceToHost));
-
-        // compute the payoff average
-        double temp_sum=0.0;
-        for(size_t i=0; i<N_PATHS; i++) {
-            temp_sum +=h_S[i];
-        }
         
-        double gpu_price = temp_sum/N_PATHS; */
-        double gpu_price = 0.;
-        double t4=double(clock())/CLOCKS_PER_SEC;
-
-        // init variables for CPU Monte Carlo
-        //vector<float> normals(N_NORMALS);
-        //d_normals.get(&normals[0],N_NORMALS);
-
-       //cudaMemcpy(h_Z, d_Z, sizeof(float) * N_PATHS, cudaMemcpyDeviceToHost);
+        h_S = (float*)malloc(sizeof(float) * N_PATHS);
 
         /* Generation with Curand State */
 
@@ -138,6 +114,7 @@ int main() {
         heston_kernel_curand<<<GRID_SIZE, BLOCK_SIZE>>>(devMRGStates, kappa, theta, sigma, v0, T, r, s0, K, rho, N_STEPS, N_PATHS, d_S);
         checkCudaErrors(cudaMemcpy(h_S, d_S, sizeof(float) * N_PATHS, cudaMemcpyDeviceToHost));
         
+
         // compute the payoff average
         double temp_sum2=0.0;
         for(size_t i=0; i<N_PATHS; i++) {
@@ -145,6 +122,13 @@ int main() {
         }
         
         double gpu_price2 = temp_sum2/N_PATHS;
+
+        //Set values to zero
+        checkCudaErrors(cudaMemset(d_S, 0,
+                            N_PATHS * sizeof(float)));
+        
+        memset(h_S, 0, N_PATHS * sizeof(float));
+
         double t5=double(clock())/CLOCKS_PER_SEC;
 
         /* END OF GENERATION WITH CURAND PSEUDORANDOM */
@@ -268,7 +252,7 @@ int main() {
 
         double t7=double(clock())/CLOCKS_PER_SEC;
 
-        double t2 = 0;
+
 
         double t8=double(clock())/CLOCKS_PER_SEC;
 
@@ -326,7 +310,7 @@ int main() {
         cout<<"Annual drift: " << theta << "%\n";
         cout<<"Volatility: " << sigma << "%\n";
         cout<<"****************** PRICE ******************\n";
-        cout<<"Option Price (GPU): " << gpu_price << "\n";
+        cout<<"Option Price (GPU): " << option_result.price << "\n";
         cout<<"Option Price MC (GPU): " << gpu_price2 << "\n";
         cout<<"Option Price QMC (GPU): " << gpu_price_qmc << "\n";
         cout<<"Option Price (CPU): " << cpu_price << "\n";
@@ -334,12 +318,10 @@ int main() {
         cout<<"Asian Option Price (GPU): " << gpu_asian << "\n";
         cout<<"Asian Option Delta (GPU): " << asian_delta << "\n";
         cout<<"******************* TIME *****************\n";
-        cout<<"Random Number Generation: " << (t2-t1)*1e3 << " ms\n";
-        cout<<"GPU Monte Carlo Computation: " << (t4-t2)*1e3 << " ms\n";
-        cout<<"GPU 2 Monte Carlo Computation: " << (t5-t4)*1e3 << " ms\n";
+        cout<<"GPU Monte Carlo Computation: " << option_result.execution_time*1e3 << " ms\n";
         cout<<"GPU Quasi Monte Carlo Computation: " << (t6-t5)*1e3 << " ms\n";
         cout<<"CPU Monte Carlo Computation: " << (t7-t6)*1e3 << " ms\n";
-        cout<<"Speed up Factor: " << (t7-t6)/(t4-t2) << "\n";
+        cout<<"Speed up Factor: " << (t7-t6)/(t2-t1) << "\n";
         
         cout<<"h_Z mean:" << h_z_m << "\n";
         cout<<"******************* END *****************\n";

@@ -14,7 +14,7 @@ ARCH = -arch=sm_60
 LDFLAGS = -lcudart -lcurand
 
 # Specify the object files
-OBJS = kernel.o main.o
+OBJS = kernel.o main.o product.o
 
 # Specify the target executable
 TARGET = HestonMC
@@ -26,6 +26,9 @@ $(TARGET): $(OBJS)
 # Build the object files
 kernel.o: kernel.cu kernel.h
 	$(NVCC) $(ARCH) $(INCLUDES) $(CFLAGS) -c kernel.cu -o kernel.o
+
+product.o: product.cu product.h
+	$(NVCC) $(ARCH) $(INCLUDES) $(CFLAGS) -c product.cu -o product.o
 
 main.o: main.cu kernel.h
 	$(NVCC) $(ARCH) $(INCLUDES) $(CFLAGS) -c main.cu -o main.o
