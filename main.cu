@@ -163,7 +163,7 @@ int main() {
                             N_PATHS * sizeof(float)));
         
         memset(h_S, 0, N_PATHS * sizeof(float));
-
+        
 
         /* Get pointers to the 32 bit scrambled direction vectors and constants*/
         CURAND_CALL(curandGetDirectionVectors32( &hostVectors32,
@@ -179,20 +179,20 @@ int main() {
         /* Allocate memory and copy 3 sets of vectors per thread to the device */
 
         checkCudaErrors(cudaMalloc((void **)&(devDirectionVectors32),
-                            N_PATHS * 2 * VECTOR_SIZE * sizeof(int)));
+                            N_PATHS * 2 * VECTOR_SIZE * sizeof(long long int)));
 
         checkCudaErrors(cudaMemcpy(devDirectionVectors32, hostVectors32,
-                            N_PATHS * 2 * VECTOR_SIZE * sizeof(int),
+                            N_PATHS * 2 * VECTOR_SIZE * sizeof(long long int),
                             cudaMemcpyHostToDevice));
 
         /* Allocate memory and copy 3 scramble constants (one costant per dimension)
         per thread to the device */
 
         checkCudaErrors(cudaMalloc((void **)&(devScrambleConstants32),
-                            N_PATHS * 2 * sizeof(int)));
+                            N_PATHS * 2 * sizeof(long long int)));
 
         checkCudaErrors(cudaMemcpy(devScrambleConstants32, hostScrambleConstants32,
-                            N_PATHS * 2 * sizeof(int),
+                            N_PATHS * 2 * sizeof(long long int),
                             cudaMemcpyHostToDevice)); 
 
         /* Initialize the states */

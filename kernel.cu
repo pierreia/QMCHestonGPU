@@ -28,12 +28,12 @@ __global__ void setup_kernel(unsigned int * sobolDirectionVectors,
     /* Each thread uses 3 different dimensions */
     curand_init(sobolDirectionVectors + VECTOR_SIZE*dim,
                 sobolScrambleConstants[dim],
-                12345,
+                1234,
                 &state[dim]);
 
     curand_init(sobolDirectionVectors + VECTOR_SIZE*(dim + 1),
                 sobolScrambleConstants[dim + 1],
-                12345,
+                1234,
                 &state[dim + 1]);
 
 }
@@ -103,7 +103,7 @@ __global__ void heston_kernel_curand(curandStateScrambledSobol32 *state, float k
     //curandStateScrambledSobol32 localState = state[id];
     /* Generate pseudo-random normals */
 
-
+    
 
     float v = v0;
     float s = s0;
@@ -129,7 +129,7 @@ __global__ void heston_kernel_curand(curandStateScrambledSobol32 *state, float k
                 v_plus = v + kappa * (theta - max(v, 0.0)) * dt + sigma * sqrt(max(v, 0.0)) * sqrt(dt) * dw2 + 0.25*sigma*sigma*dt*(dw2*dw2 - 1); // Milstein
                 s_plus = s * exp((r - 0.5 * max(v, 0.0)) * dt + sqrt(max(v, 0.0)) * sqrt(dt)* dw1);
 
-                //float s_plus = s*(1 + r*dt + sqrt(max(v, 0.0)) * sqrt(dt)* dw1 + s*0.25*dt*(dw1*dw1 - 1));
+                //s_plus = s + s*r*dt + s * sqrt(v*dt)* dw1 + s*s*0.25*dt*(dw1*dw1 - 1);
 
                 v = max(v_plus, 0.0);
                 s = max(s_plus, 0.0);
