@@ -12,7 +12,7 @@ __global__ void setup_kernel(curandStateMRG32k3a *state)
     int id = threadIdx.x + blockIdx.x * blockDim.x;
     /* Each thread gets same seed, a different sequence
        number, no offset */
-    curand_init(12345, id, 0, &state[id]);
+    curand_init(clock() + id/1000, id, 0, &state[id]);
 }
 
 
@@ -25,20 +25,21 @@ __global__ void setup_kernel(unsigned int * sobolDirectionVectors,
     int id = threadIdx.x + blockIdx.x * blockDim.x;
     int dim = 2*id;
     int const VECTOR_SIZE = 32;
+    unsigned int offset = id * ((10000 / blockDim.x) + 1);
     /* Each thread uses 3 different dimensions */
     curand_init(sobolDirectionVectors + VECTOR_SIZE*dim,
                 sobolScrambleConstants[dim],
-                1234,
+                offset,
                 &state[dim]);
 
     curand_init(sobolDirectionVectors + VECTOR_SIZE*(dim + 1),
                 sobolScrambleConstants[dim + 1],
-                1234,
+                offset,
                 &state[dim + 1]);
 
 }
 
-__global__ void heston_kernel_curand(curandStateMRG32k3a *state, float kappa, float theta, float sigma, float v0, float T, float r, float s0, float K, float rho, int N_timesteps, int N_paths, float *d_S, DiscretisationType mode)
+__global__ void heston_kernel_curand(curandStateMRG32k3a *state, float kappa, float theta, float sigma, float v0, float T, float r, float s0, float K, float rho, int N_timesteps, int N_paths, float *d_S, float *d_Delta, float *d_Rho, DiscretisationType mode)
 {
     int id = threadIdx.x + blockIdx.x * blockDim.x;
     
@@ -88,8 +89,9 @@ __global__ void heston_kernel_curand(curandStateMRG32k3a *state, float kappa, fl
             
             }
         float payoff = max(s - K, 0.0);
-        k_payoff += payoff;
-        d_S[id] = exp(-r * T) * k_payoff;
+        d_S[id] = exp(-r * T) * payoff;
+        d_Delta[id] = exp(-r * T) * ((s>K) ? 1: 0) * s/s0;
+        d_Rho[id] = exp(-r * T) * ((s>K) ? 1: 0) * K*T;
     }
     /* Copy state back to global memory */
     state[id] = localState;
@@ -97,7 +99,7 @@ __global__ void heston_kernel_curand(curandStateMRG32k3a *state, float kappa, fl
 }
 
 
-__global__ void heston_kernel_curand(curandStateScrambledSobol32 *state, float kappa, float theta, float sigma, float v0, float T, float r, float s0, float K, float rho, int N_timesteps, int N_paths, float *d_S)
+__global__ void heston_kernel_curand(curandStateScrambledSobol32 *state, float kappa, float theta, float sigma, float v0, float T, float r, float s0, float K, float rho, int N_timesteps, int N_paths, float *d_S, float *d_Delta, float *d_Rho, DiscretisationType mode)
 {
     int id = threadIdx.x + blockIdx.x * blockDim.x;
     int baseDim = 2 * id;
@@ -111,12 +113,14 @@ __global__ void heston_kernel_curand(curandStateScrambledSobol32 *state, float k
 
     float v = v0;
     float s = s0;
+    
 
     float dt = T/N_timesteps;
 
     float v_plus, s_plus;
     
     float z1, z2;
+    float payoff;
     
     if (id < N_paths) {
             for (int j = 0; j < N_timesteps; ++j) {
@@ -126,23 +130,29 @@ __global__ void heston_kernel_curand(curandStateScrambledSobol32 *state, float k
                 float dw1 = z1;
                 float dw2 = rho * z1 + sqrt(1 - rho * rho) * z2;
 
-                //float v_plus = v + kappa * (theta - max(v, 0.0)) * dt + sigma * sqrt(max(v, 0.0)) * dw2; //Euler
-                //float s_plus = s * exp((r - 0.5 * max(v, 0.0)) * dt + sqrt(max(v, 0.0)) * dw1);
+                if (mode==EULER) {
 
+                    v_plus = v + kappa * (theta - max(v, 0.0)) * dt + sigma * sqrt(max(v, 0.0)) * sqrt(dt) * dw2; // Milstein
+                    s_plus = s * exp((r - 0.5 * max(v, 0.0)) * dt + sqrt(max(v, 0.0)) * sqrt(dt)* dw1);
 
-                v_plus = v + kappa * (theta - max(v, 0.0)) * dt + sigma * sqrt(max(v, 0.0)) * sqrt(dt) * dw2 + 0.25*sigma*sigma*dt*(dw2*dw2 - 1); // Milstein
-                s_plus = s * exp((r - 0.5 * max(v, 0.0)) * dt + sqrt(max(v, 0.0)) * sqrt(dt)* dw1);
+                    s = s_plus;
+                    v = v_plus;
 
-                //s_plus = s + s*r*dt + s * sqrt(v*dt)* dw1 + s*s*0.25*dt*(dw1*dw1 - 1);
+                } else {
+                    v_plus = v + kappa * (theta - max(v, 0.0)) * dt + sigma * sqrt(max(v, 0.0)) * sqrt(dt) * dw2 + 0.25*sigma*sigma*dt*(dw2*dw2 - 1); // Milstein
+                    s_plus = s * exp((r - 0.5 * max(v, 0.0)) * dt + sqrt(max(v, 0.0)) * sqrt(dt)* dw1);
 
-                v = max(v_plus, 0.0);
-                s = max(s_plus, 0.0);
-
+                    v = max(v_plus, 0.0);
+                    s = max(s_plus, 0.0);
+                
+                }
                 
             
             }
-        float payoff = max(s - K, 0.0);
+        payoff = max(s - K, 0.0);
         d_S[id] = exp(-r * T) * payoff;
+        d_Delta[id] = exp(-r * T) * ((s>K) ? 1: 0) * s/s0;
+        d_Rho[id] = exp(-r * T) * ((s>K) ? 1: 0) * K*T;
     }
     /* Copy state back to global memory */
     
@@ -205,7 +215,7 @@ void heston_euro_call(
 
 
 
-__global__ void heston_kernel_asian(curandStateMRG32k3a *state, float kappa, float theta, float sigma, float v0, float T, float r, float s0, float K, float rho, int N_timesteps, int N_paths, float *d_S, float *d_delta, int m)
+__global__ void heston_kernel_asian(curandStateMRG32k3a *state, float kappa, float theta, float sigma, float v0, float T, float r, float s0, float K, float rho, int N_timesteps, int N_paths, int m, float *d_S, float *d_Delta, float *d_Rho, DiscretisationType mode)
 {
     int id = threadIdx.x + blockIdx.x * blockDim.x;
     
@@ -221,6 +231,7 @@ __global__ void heston_kernel_asian(curandStateMRG32k3a *state, float kappa, flo
     float s = s0;
     float s_mean = 0.;
     float delta = 0.;
+    float greek_rho = 0.;
 
     float dt = T/N_timesteps;
 
@@ -237,32 +248,41 @@ __global__ void heston_kernel_asian(curandStateMRG32k3a *state, float kappa, flo
 
                 float dw1 = z1;
                 float dw2 = rho * z1 + sqrt(1 - rho * rho) * z2;
+                if (mode==EULER) {
 
-                //float v_plus = v + kappa * (theta - max(v, 0.0)) * dt + sigma * sqrt(max(v, 0.0)) * dw2; //Euler
-                //float s_plus = s * exp((r - 0.5 * max(v, 0.0)) * dt + sqrt(max(v, 0.0)) * dw1);
+                    v_plus = v + kappa * (theta - max(v, 0.0)) * dt + sigma * sqrt(max(v, 0.0)) * sqrt(dt) * dw2; // Milstein
+                    s_plus = s * exp((r - 0.5 * max(v, 0.0)) * dt + sqrt(max(v, 0.0)) * sqrt(dt)* dw1);
 
+                    s = s_plus;
+                    v = v_plus;
 
-                v_plus = v + kappa * (theta - max(v, 0.0)) * dt + sigma * sqrt(max(v, 0.0)) * sqrt(dt) * dw2 + 0.25*sigma*sigma*dt*(dw2*dw2 - 1); // Milstein
-                s_plus = s * exp((r - 0.5 * max(v, 0.0)) * dt + sqrt(max(v, 0.0)) * sqrt(dt)* dw1);
+                } else {
+                    v_plus = v + kappa * (theta - max(v, 0.0)) * dt + sigma * sqrt(max(v, 0.0)) * sqrt(dt) * dw2 + 0.25*sigma*sigma*dt*(dw2*dw2 - 1); // Milstein
+                    s_plus = s * exp((r - 0.5 * max(v, 0.0)) * dt + sqrt(max(v, 0.0)) * sqrt(dt)* dw1);
 
-                //float s_plus = s*(1 + r*dt + sqrt(max(v, 0.0)) * sqrt(dt)* dw1 + s*0.25*dt*(dw1*dw1 - 1));
-
-                v = max(v_plus, 0.0);
-                s = max(s_plus, 0.0);
-
-                if (j == 249) {
-                    s_mean += s;
-                } else if (j == 449) {
-                    s_mean += s;
-                } else if (j == 749) {
-                    s_mean += s;
-                } else if (j == 999) {
-                    s_mean += s;
-                }
+                    v = max(v_plus, 0.0);
+                    s = max(s_plus, 0.0);
                 
+                }
+
+                // for (int ti=1; ti <= m; ti++) {
+                //     if (j==(N_timesteps/ti-1)){
+                //         s_mean += s;
+                //     }
+                // }
+
+                float ts[4]{249, 449, 749, 999};
+
+                for (int k=0; k<4; k++){
+                    if (j==ts[k]){
+                        s_mean+=s;
+                        greek_rho += s/(k+1);
+                    }
+                }
             
             }
         s_mean/=m;
+        
         float payoff = max(s_mean - K, 0.0);
 
         d_S[id] = exp(-r * T) * payoff;
@@ -270,7 +290,15 @@ __global__ void heston_kernel_asian(curandStateMRG32k3a *state, float kappa, flo
         if (s_mean > K) {
             delta = exp(-r * T) * s_mean/s0;
         }
-        d_delta[id] = delta;
+        d_Delta[id] = delta;
+
+        greek_rho/= m;
+        greek_rho -= T*(s_mean-K);
+        greek_rho *= exp(-r * T)* ((s_mean > K ? 1 :0));
+
+        d_Rho[id] = greek_rho;
+
+        
     }
     /* Copy state back to global memory */
     state[id] = localState;

@@ -11,7 +11,7 @@ CFLAGS = -std=c++11
 ARCH = -arch=sm_60
 
 # Specify the linker flags
-LDFLAGS = -lcudart -lcurand
+LDFLAGS = -lcudart -lcurand 
 
 # Specify the object files
 OBJS = kernel.o main.o product.o
