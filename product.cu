@@ -393,7 +393,8 @@ void MCAsianCPU(float kappa, float theta, float sigma, float v0, float T, float 
     //boost::variate_generator<boost::mt19937&, boost::normal_distribution<> > normal_random(rng, dist);
 
     
-    float ts[4]{249, 449, 749, 999};
+    float ts[4]{31, 63, 95, 127};
+    
 
 
     for (int i = 0; i < N_PATHS; ++i) {
@@ -402,9 +403,11 @@ void MCAsianCPU(float kappa, float theta, float sigma, float v0, float T, float 
         float s = s0;
         float dt = T/N_STEPS;
         float s_mean = 0.;
+        int k = 0.;
 
         float s_plus, v_plus;
         float payoff, tmp_rho, delta;
+        float greek_rho;
 
         for (int j = 0; j < N_STEPS; ++j) {
 
@@ -433,11 +436,18 @@ void MCAsianCPU(float kappa, float theta, float sigma, float v0, float T, float 
             }
 
 
-        for (int k=0; k<4; k++){
-            if (j==ts[k]){
-                s_mean+=s;
-                tmp_rho += s/(k+1);
-            }
+        // for (int k=0; k<4; k++){
+        //     if (j==ts[k]){
+        //         s_mean+=s;
+        //         tmp_rho += s/(k+1);
+        //     }
+        // }
+
+                        
+        if ((j+1)%(N_STEPS/4) == 0){
+            s_mean += s;
+            greek_rho += s/(k+1);
+            k++;
         }
                 
             
@@ -449,10 +459,10 @@ void MCAsianCPU(float kappa, float theta, float sigma, float v0, float T, float 
         MC_price += exp(-r * T) * payoff;
         MC_delta += exp(-r * T) * s_mean/s0 * (s_mean > K ? 1 :0);
 
-        tmp_rho/= m;
-        tmp_rho -= T*(s_mean-K);
-        tmp_rho *= exp(-r * T)* ((s_mean > K ? 1 :0));
-        MC_rho += tmp_rho;
+        greek_rho/= m;
+        greek_rho -= T*(s_mean-K);
+        greek_rho *= exp(-r * T)* ((s_mean > K ? 1 :0));
+        MC_rho += greek_rho;
         
     }
 

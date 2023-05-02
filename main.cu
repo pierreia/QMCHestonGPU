@@ -25,9 +25,9 @@ using namespace std;
 
 void printResultsLatex(const std::vector<OptionPriceResult>& params, OptionPriceStats& results) {
     // Print header
-    std::cout << "\\begin{tabular}{|c|c|c|c|c|c|c|c|}" << std::endl;
+    std::cout << "\\begin{tabular}{|c|c|c|c|c|}" << std::endl;
     std::cout << "\\hline" << std::endl;
-    std::cout << "N Timesteps & Results & $Price$ & $Delta$ & $Rho$ & Time (ms) \\\\" << std::endl;
+    std::cout << "N Timesteps & $Price$ & $Delta$ & $Rho$ & Time (ms) \\\\" << std::endl;
     std::cout << "\\hline" << std::endl;
 
     // Print results
@@ -43,18 +43,19 @@ void printResultsLatex(const std::vector<OptionPriceResult>& params, OptionPrice
         //std::cout << " & " << results[i].std_dev_rho;
         std::cout << " & " << results.execution_time * 1e3 ;
         std::cout << " \\\\" << std::endl;
-        std::cout << "\\hline" << std::endl;
+        //std::cout << "\\hline" << std::endl;
     }
 
     // Print footer
+    std::cout << "\\hline" << std::endl;
     std::cout << "\\end{tabular}" << std::endl;
 }
 
 int main() {
     try {
         // declare variables and constants
-        int N_PATHS = 10000;
-        int N_STEPS = 1000;
+        int N_PATHS = 1000;
+        int N_STEPS = 100;
         
 
         const float kappa = 6.21;
@@ -263,16 +264,21 @@ int main() {
         //curandDestroyGenerator( curandGenerator ) ;
 
     /* Cleanup */
-    OptionPriceStats TestStats {10,0,0,0,0,0,0,0, GPU};
+    N_PATHS = 2000;
+
+
+    OptionPriceStats StatsGPU {20,0,0,0,0,0,0,0, GPU};
+    OptionPriceStats StatsCPU {20,0,0,0,0,0,0,0, CPU};
     std::vector<OptionPriceResult> TestVector = {
-        {EURO, MILSTEIN, PSEUDO, kappa, theta, sigma, v0, T, r, s0, K, rho, 100, N_PATHS, 0., 0., 0., 0.0},
-        {EURO, MILSTEIN, PSEUDO, kappa, theta, sigma, v0, T, r, s0, K, rho, 500, N_PATHS, 0., 0., 0., 0.0},
-        {EURO, MILSTEIN, PSEUDO, kappa, theta, sigma, v0, T, r, s0, K, rho, 1000, N_PATHS, 0., 0., 0., 0.0}, 
-        {EURO, MILSTEIN, PSEUDO, kappa, theta, sigma, v0, T, r, s0, K, rho, 2000, N_PATHS, 0., 0., 0., 0.0}, 
+        {ASIAN, MILSTEIN, PSEUDO, kappa, theta, sigma, v0, T, r, s0, K, rho, 32, 5 * N_PATHS, 0., 0., 0., 0.0},
+        {ASIAN, MILSTEIN, PSEUDO, kappa, theta, sigma, v0, T, r, s0, K, rho, 64, 5 * N_PATHS, 0., 0., 0., 0.0},
+        {ASIAN, MILSTEIN, PSEUDO, kappa, theta, sigma, v0, T, r, s0, K, rho, 128, 5 * N_PATHS, 0., 0., 0., 0.0}, 
+        {ASIAN, MILSTEIN, PSEUDO, kappa, theta, sigma, v0, T, r, s0, K, rho, 256, 5 * N_PATHS, 0., 0., 0., 0.0}, 
         };
     std::vector<OptionPriceStats> AsianResults = {Results};
 
-    printResultsLatex(TestVector, TestStats);
+    printResultsLatex(TestVector, StatsGPU);
+    printResultsLatex(TestVector, StatsCPU);
     }
     catch(exception& e) {
         cout<< "exception: " << e.what() << "\n";

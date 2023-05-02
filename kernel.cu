@@ -225,17 +225,19 @@ __global__ void heston_kernel_asian(curandStateMRG32k3a *state, float kappa, flo
     curandStateMRG32k3a localState = state[id];
     /* Generate pseudo-random normals */
 
-
+    float ts[4]{31, 63, 95, 127};
 
     float v = v0;
     float s = s0;
     float s_mean = 0.;
     float delta = 0.;
     float greek_rho = 0.;
+    float tmp_rho = 0.;
 
     float dt = T/N_timesteps;
 
     float v_plus, s_plus;
+    int k = 0;
     
     
     
@@ -265,20 +267,25 @@ __global__ void heston_kernel_asian(curandStateMRG32k3a *state, float kappa, flo
                 
                 }
 
-                // for (int ti=1; ti <= m; ti++) {
-                //     if (j==(N_timesteps/ti-1)){
-                //         s_mean += s;
+                
+                if ((j+1)%(N_timesteps/4) == 0){
+                    s_mean += s;
+                    greek_rho += s/(k+1);
+                    k++;
+                }
+                
+
+                //float ts[4]{31, 63, 95, 127};
+                //float ts[4]{7, 15, 23, 31};
+                //float ts[4]{15, 31, 47, 63};
+                //float ts[4]{255, 511, 767, 1023};
+
+                // for (int k=0; k<4; k++){
+                //     if (j==ts[k]){
+                //         s_mean+=s;
+                //         tmp_rho += s/(k+1);
                 //     }
                 // }
-
-                float ts[4]{249, 449, 749, 999};
-
-                for (int k=0; k<4; k++){
-                    if (j==ts[k]){
-                        s_mean+=s;
-                        greek_rho += s/(k+1);
-                    }
-                }
             
             }
         s_mean/=m;
@@ -291,6 +298,10 @@ __global__ void heston_kernel_asian(curandStateMRG32k3a *state, float kappa, flo
             delta = exp(-r * T) * s_mean/s0;
         }
         d_Delta[id] = delta;
+
+        tmp_rho/= m;
+        tmp_rho -= T*(s_mean-K);
+        tmp_rho *= exp(-r * T)* ((s_mean > K ? 1 :0));
 
         greek_rho/= m;
         greek_rho -= T*(s_mean-K);
